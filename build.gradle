@@ -1,0 +1,128 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'me.hanju'
+version = '0.1.2'
+description = 'Java client library for document parsing and conversion services'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencyManagement {
+    imports {
+        mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.9'
+    }
+}
+
+dependencies {
+    // Spring WebFlux (WebClient)
+    api 'org.springframework:spring-webflux'
+    api 'io.projectreactor.netty:reactor-netty-http'
+
+    // JSON
+    api 'com.fasterxml.jackson.core:jackson-databind'
+
+    // SLF4J
+    implementation 'org.slf4j:slf4j-api'
+    testRuntimeOnly 'ch.qos.logback:logback-classic'
+
+    // Test
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.springframework:spring-context'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+
+            groupId = project.group
+            artifactId = 'parsekit'
+            version = project.version
+
+            versionMapping {
+                usage('java-api') {
+                    fromResolutionOf('runtimeClasspath')
+                }
+                usage('java-runtime') {
+                    fromResolutionResult()
+                }
+            }
+
+            pom {
+                name = 'ParseKit'
+                description = 'Java client for Document Parser service'
+                url = 'https://github.com/agent-hanju/parsekit'
+
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = 'agent-hanju'
+                        email = 'agent.hanju@gmail.com'
+                    }
+                }
+
+                scm {
+                    connection = 'scm:git:git://github.com/agent-hanju/parsekit.git'
+                    developerConnection = 'scm:git:ssh://github.com/agent-hanju/parsekit.git'
+                    url = 'https://github.com/agent-hanju/parsekit'
+                }
+            }
+        }
+    }
+}
+
+// .env 파일 로드
+def loadEnvFile() {
+    def envFile = file('.env')
+    def envVars = [:]
+    if (envFile.exists()) {
+        envFile.eachLine { line ->
+            if (line && !line.startsWith('#') && line.contains('=')) {
+                def parts = line.split('=', 2)
+                if (parts.length == 2) {
+                    envVars[parts[0].trim()] = parts[1].trim()
+                }
+            }
+        }
+    }
+    return envVars
+}
+
+def envVars = loadEnvFile()
+
+tasks.named('test') {
+    useJUnitPlatform()
+    // .env 파일에서 환경 변수 로드 (시스템 환경 변수보다 우선)
+    systemProperty 'PARSEKIT_CONVERTER_URL', envVars['PARSEKIT_CONVERTER_URL'] ?: System.getenv('PARSEKIT_CONVERTER_URL') ?: ''
+    systemProperty 'PARSEKIT_DOCLING_URL', envVars['PARSEKIT_DOCLING_URL'] ?: System.getenv('PARSEKIT_DOCLING_URL') ?: ''
+    systemProperty 'PARSEKIT_VLM_URL', envVars['PARSEKIT_VLM_URL'] ?: System.getenv('PARSEKIT_VLM_URL') ?: ''
+    systemProperty 'PARSEKIT_VLM_MODEL', envVars['PARSEKIT_VLM_MODEL'] ?: System.getenv('PARSEKIT_VLM_MODEL') ?: ''
+    systemProperty 'PARSEKIT_TEST_INPUT_DIR', envVars['PARSEKIT_TEST_INPUT_DIR'] ?: System.getenv('PARSEKIT_TEST_INPUT_DIR') ?: ''
+    systemProperty 'PARSEKIT_TEST_OUTPUT_DIR', envVars['PARSEKIT_TEST_OUTPUT_DIR'] ?: System.getenv('PARSEKIT_TEST_OUTPUT_DIR') ?: ''
+    systemProperty 'PARSEKIT_TEST_DPI', envVars['PARSEKIT_TEST_DPI'] ?: System.getenv('PARSEKIT_TEST_DPI') ?: ''
+}
+
+tasks.withType(Javadoc) {
+    options.encoding = 'UTF-8'
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
