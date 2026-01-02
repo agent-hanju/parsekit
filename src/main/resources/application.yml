@@ -1,0 +1,49 @@
+server:
+  port: 8000
+spring:
+  application:
+    name: parsekit
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+# JODConverter Configuration
+jodconverter:
+  local:
+    enabled: true
+    office-home: /usr/lib/libreoffice
+    port-numbers: 2002
+    max-tasks-per-process: 100
+    task-execution-timeout: 120000
+    task-queue-timeout: 30000
+    process-timeout: 120000
+    process-retry-interval: 250
+    process-manager:
+      process-timeout: 120000
+
+logging:
+  level:
+    me.hanju.parsekit: DEBUG
+    org.jodconverter: INFO
+
+# Parser Client Configuration
+parser:
+  docling:
+    # base-urls:
+    #   - http://localhost:5000
+    #   - http://localhost:5001
+    # timeout: 5m
+    # max-buffer-size: 16777216
+  vlm:
+    # servers:
+    #   - base-url: http://localhost:8000
+    #     model: Qwen/Qwen2-VL-7B-Instruct
+    #   - base-url: http://localhost:8001
+    #     model: Qwen/Qwen2-VL-7B-Instruct
+    # timeout: 2m
+    # max-buffer-size: 16777216
+    # max-tokens: 4096
+    # default-prompt: "Extract all text from this image accurately. Return only the extracted text."
+    # embedded-image-prompt: "This is an embedded image from a document. Extract and describe all text, diagrams, charts, or visual content. Format the output as markdown."
+    # image-format: png

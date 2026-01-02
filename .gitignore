@@ -2,10 +2,29 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
 
-# IDE - IntelliJ IDEA
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# Spring Boot
+target/
+out/
+
+# IDE
+.claude
 .idea/
+.vscode/
+*.swp
+*.swo
 *.iml
+*.iws
 *.ipr
 *.iws
 out/
@@ -20,16 +39,20 @@ bin/
 # IDE - VSCode
 .vscode/
 
+# Environment
+.env
+.env.local
+*.env
+
 # OS
 .DS_Store
 Thumbs.db
 
 # Logs
+logs/
 *.log
-
 # Test output
-data/
-
+data/outputs
 # Local configuration
 *.local
 .env

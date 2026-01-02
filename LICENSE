@@ -19,3 +19,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+This software includes the following third-party tools in the Docker image:
+
+LibreOffice - Mozilla Public License 2.0 (MPL-2.0)
+https://www.libreoffice.org/about-us/licenses/
+
+H2Orestart (HWP/HWPX support extension) - Apache License 2.0
+https://github.com/ebandal/H2Orestart
+
+Poppler (PDF rendering CLI tool) - GNU General Public License v2 or later (GPL-2.0+)
+https://poppler.freedesktop.org/

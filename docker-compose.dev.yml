@@ -1,0 +1,20 @@
+services:
+  parsekit:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - gradle-cache:/root/.gradle
+      - ./data/inputs:/app/data/inputs:ro
+      - ./data/outputs:/app/data/outputs
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+    command: ./gradlew bootRun --continuous
+    tty: true
+    stdin_open: true
+
+volumes:
+  gradle-cache:
