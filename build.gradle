@@ -46,8 +46,9 @@ dependencies {
   implementation "org.jodconverter:jodconverter-spring-boot-starter:${jodConverterVersion}"
   implementation "org.jodconverter:jodconverter-local:${jodConverterVersion}"
 
-  // File type detection
+  // File type detection and parsing
   implementation "org.apache.tika:tika-core:${tikaVersion}"
+  implementation "org.apache.tika:tika-parsers-standard-package:${tikaVersion}"
   implementation "commons-io:commons-io:${commonsIoVersion}"
 
   // Markdown (GitHub Flavored Markdown to HTML)

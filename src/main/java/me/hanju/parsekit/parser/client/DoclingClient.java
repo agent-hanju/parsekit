@@ -2,7 +2,9 @@ package me.hanju.parsekit.parser.client;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.context.config.annotation.RefreshScope;
@@ -116,4 +118,46 @@ public class DoclingClient {
       throw new DoclingClientException("Failed to parse document: " + e.getMessage(), e);
     }
   }
+
+  /**
+   * Docling이 직접 지원하는 문서 형식.
+   *
+   * @see <a href="https://docling-project.github.io/docling/usage/supported_formats/">Docling Supported Formats</a>
+   */
+  private static final Set<String> SUPPORTED_TYPES = Set.of(
+      // PDF
+      "application/pdf",
+      // MS Office 2007+ (OOXML)
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+      // Markdown
+      "text/markdown",
+      "text/x-markdown",
+      // HTML
+      "text/html",
+      "application/xhtml+xml",
+      // CSV
+      "text/csv",
+      // Images
+      "image/png",
+      "image/jpeg",
+      "image/tiff",
+      "image/bmp",
+      "image/webp"
+  );
+
+  /**
+   * 주어진 MIME 타입이 Docling에서 직접 지원되는지 확인한다.
+   */
+  public static boolean isSupported(final String mimeType) {
+    return SUPPORTED_TYPES.contains(mimeType);
+  }
+
+  /**
+   * Markdown embedded 이미지 패턴: ![alt](data:image/xxx;base64,...)
+   * 캡처 그룹: 1=altText, 2=mimeType(image/xxx), 3=base64Data
+   */
+  public static final Pattern EMBEDDED_IMAGE_PATTERN = Pattern.compile(
+      "!\\[([^\\]]*)\\]\\(data:(image/[^;]+);base64,([^)]+)\\)");
 }

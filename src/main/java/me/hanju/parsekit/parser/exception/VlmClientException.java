@@ -1,6 +1,6 @@
 package me.hanju.parsekit.parser.exception;
 
-import me.hanju.parsekit.common.ParseKitException;
+import me.hanju.parsekit.common.exception.ParseKitException;
 
 public class VlmClientException extends ParseKitException {
 

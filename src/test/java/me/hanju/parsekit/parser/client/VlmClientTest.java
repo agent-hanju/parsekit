@@ -14,7 +14,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.TestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
+
+import me.hanju.parsekit.common.FileTypeDetector;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -49,8 +52,12 @@ class VlmClientTest {
               "OCR: " + path.getFileName(),
               () -> {
                 byte[] imageBytes = Files.readAllBytes(path);
+                String filename = path.getFileName().toString();
+                MockMultipartFile file = new MockMultipartFile(
+                    "file", filename, "application/octet-stream", imageBytes);
+                String encodedUri = FileTypeDetector.toBase64EncodedUri(file);
 
-                String result = client.ocr(imageBytes);
+                String result = client.ocr(encodedUri);
 
                 assertThat(result).isNotBlank();
               }));
@@ -72,8 +79,12 @@ class VlmClientTest {
               "OCR (custom prompt): " + path.getFileName(),
               () -> {
                 byte[] imageBytes = Files.readAllBytes(path);
+                String filename = path.getFileName().toString();
+                MockMultipartFile file = new MockMultipartFile(
+                    "file", filename, "application/octet-stream", imageBytes);
+                String encodedUri = FileTypeDetector.toBase64EncodedUri(file);
 
-                String result = client.ocr(imageBytes, customPrompt);
+                String result = client.ocr(encodedUri, customPrompt);
 
                 assertThat(result).isNotBlank();
               }));

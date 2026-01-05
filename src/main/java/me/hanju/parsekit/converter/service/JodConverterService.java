@@ -19,35 +19,31 @@ public class JodConverterService {
 
   private final DocumentConverter documentConverter;
 
-  public byte[] convertToOdt(String filename, byte[] fileBytes) {
-    log.info("Converting {} to ODT", filename);
+  public byte[] convertToOdt(final byte[] fileBytes) {
     try {
-      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      final ByteArrayOutputStream out = new ByteArrayOutputStream();
       documentConverter
           .convert(new ByteArrayInputStream(fileBytes))
           .to(out)
           .as(DefaultDocumentFormatRegistry.ODT)
           .execute();
-      log.info("Successfully converted {} to ODT", filename);
       return out.toByteArray();
-    } catch (OfficeException e) {
-      throw new JodConverterException("convertToOdt failed: " + filename, e);
+    } catch (final OfficeException e) {
+      throw new JodConverterException("convertToOdt failed", e);
     }
   }
 
-  public byte[] convertToPdf(String filename, byte[] fileBytes) {
-    log.info("Converting {} to PDF", filename);
+  public byte[] convertToPdf(final byte[] fileBytes) {
     try {
-      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      final ByteArrayOutputStream out = new ByteArrayOutputStream();
       documentConverter
           .convert(new ByteArrayInputStream(fileBytes))
           .to(out)
           .as(DefaultDocumentFormatRegistry.PDF)
           .execute();
-      log.info("Successfully converted {} to PDF", filename);
       return out.toByteArray();
-    } catch (OfficeException e) {
-      throw new JodConverterException("convertToPdf failed: " + filename, e);
+    } catch (final OfficeException e) {
+      throw new JodConverterException("convertToPdf failed", e);
     }
   }
 }

@@ -1,12 +1,9 @@
 package me.hanju.parsekit.parser.controller;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +15,9 @@ import org.springframework.web.multipart.MultipartFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import me.hanju.parsekit.common.FileTypeDetector;
+import me.hanju.parsekit.common.FileTypeDetector.FileTypeInfo;
+import me.hanju.parsekit.common.exception.BadRequestException;
+import me.hanju.parsekit.common.exception.UnsupportedMediaTypeException;
 import me.hanju.parsekit.converter.service.JodConverterService;
 import me.hanju.parsekit.parser.client.DoclingClient;
 import me.hanju.parsekit.parser.client.VlmClient;
@@ -26,8 +26,10 @@ import me.hanju.parsekit.parser.dto.ParseResult;
 
 /**
  * 하이브리드 파싱 컨트롤러 (Docling + VLM)
- * - Docling으로 문서 파싱 (embedded 모드)
- * - 결과 마크다운에서 이미지를 VLM으로 OCR하여 대체
+ * - 플레인 텍스트: 지원 안함
+ * - 마크다운: embedded 이미지를 VLM OCR로 대체 후 반환
+ * - 이미지/문서/스프레드시트/프레젠테이션/PDF: Docling embedded 모드로 파싱 후 이미지를 VLM OCR로 대체
+ * - 기타 문서: PDF 변환 → Docling 파싱 → 이미지 VLM OCR
  */
 @Slf4j
 @RestController
@@ -36,80 +38,71 @@ import me.hanju.parsekit.parser.dto.ParseResult;
 @ConditionalOnBean({ DoclingClient.class, VlmClient.class })
 public class HybridParserController {
 
-  private static final Pattern EMBEDDED_IMAGE_PATTERN = Pattern.compile(
-      "!\\[([^\\]]*)\\]\\(data:image/[^;]+;base64,([^)]+)\\)");
-
   private final DoclingClient doclingClient;
   private final VlmClient vlmClient;
   private final JodConverterService jodConverter;
-  private final FileTypeDetector fileTypeDetector;
   private final ParserProperties parserProperties;
+
+  private static final String IMAGE_MODE = "embedded";
 
   @PostMapping(value = "/parse", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<ParseResult> parse(
-      @RequestParam("file") MultipartFile file,
-      @RequestParam(value = "dpi", defaultValue = "150") int dpi) {
-
+      @RequestParam("file") final MultipartFile file,
+      @RequestParam(value = "dpi", defaultValue = "150") final int dpi) {
     if (file.isEmpty()) {
-      return ResponseEntity.badRequest().build();
+      throw new BadRequestException("File is empty");
     }
 
-    try {
-      byte[] fileBytes = file.getBytes();
-      String filename = file.getOriginalFilename();
-      String mimeType = fileTypeDetector.detectMimeType(fileBytes, filename);
-
-      // 이미지: VLM으로 직접 처리
-      if (fileTypeDetector.isImage(mimeType)) {
-        log.info("Image file, using VLM: {}", filename);
-        String text = vlmClient.ocr(fileBytes, parserProperties.getVlm().getEmbeddedImagePrompt());
-        return ResponseEntity.ok(new ParseResult(filename, text));
+    final FileTypeInfo info = FileTypeDetector.detect(file);
+    final ParseResult result = switch (info.category()) {
+      case PLAIN_TEXT ->
+        throw new UnsupportedMediaTypeException("Plain text files not supported: " + info.originalFilename());
+      case MARKDOWN -> {
+        log.info("Markdown file, replacing embedded images with VLM OCR: {}", info.originalFilename());
+        final String content = new String(FileTypeDetector.getBytes(file), StandardCharsets.UTF_8);
+        final String markdown = this.replaceEmbeddedImages(content);
+        yield new ParseResult(info.originalFilename(), markdown);
       }
-
-      // 텍스트 파일: 변환 없이 그대로 반환
-      if (fileTypeDetector.isText(mimeType)) {
-        log.info("Text file, returning as-is: {}", filename);
-        String content = new String(fileBytes, StandardCharsets.UTF_8);
-        return ResponseEntity.ok(new ParseResult(filename, content));
+      case IMAGE -> {
+        log.info("Image file, OCR with VLM directly: {}", info.originalFilename());
+        final String encodedUri = FileTypeDetector.toBase64EncodedUri(file);
+        final String ocrResult = vlmClient.ocr(encodedUri);
+        yield new ParseResult(info.originalFilename(), ocrResult);
       }
-
-      // Docling 미지원 형식: PDF 변환
-      byte[] parseBytes = fileBytes;
-      String parseFilename = filename;
-      if (!fileTypeDetector.isDoclingSupported(mimeType)) {
-        log.info("Converting to PDF: {}", filename);
-        parseBytes = jodConverter.convertToPdf(filename, fileBytes);
-        parseFilename = filename.replaceAll("\\.[^.]+$", ".pdf");
+      case DOCUMENT, SPREADSHEET, PRESENTATION, PDF -> {
+        final byte[] fileBytes = FileTypeDetector.getBytes(file);
+        final ParseResult doclingResult;
+        if (DoclingClient.isSupported(info.mimeType())) {
+          log.info("Parsing with Docling: {}", info.originalFilename());
+          doclingResult = doclingClient.parse(fileBytes, info.originalFilename(), IMAGE_MODE);
+        } else {
+          log.info("Converting to PDF, then parsing: {}", info.originalFilename());
+          final byte[] pdfBytes = jodConverter.convertToPdf(fileBytes);
+          doclingResult = doclingClient.parse(pdfBytes, info.baseFilename() + ".pdf", IMAGE_MODE);
+        }
+        final String markdown = this.replaceEmbeddedImages(doclingResult.markdown());
+        yield new ParseResult(info.originalFilename(), markdown);
       }
+    };
 
-      // Docling으로 파싱 (embedded 모드)
-      log.info("Parsing with Docling (embedded): {}", parseFilename);
-      ParseResult doclingResult = doclingClient.parse(parseBytes, parseFilename, "embedded");
-
-      // 임베디드 이미지를 VLM으로 대체
-      String markdown = replaceEmbeddedImages(doclingResult.markdown());
-      return ResponseEntity.ok(new ParseResult(filename, markdown));
-
-    } catch (Exception e) {
-      log.error("Parsing failed", e);
-      return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-    }
+    return ResponseEntity.ok(result);
   }
 
   private String replaceEmbeddedImages(String markdown) {
-    Matcher matcher = EMBEDDED_IMAGE_PATTERN.matcher(markdown);
+    Matcher matcher = DoclingClient.EMBEDDED_IMAGE_PATTERN.matcher(markdown);
     StringBuffer result = new StringBuffer();
 
     int count = 0;
     while (matcher.find()) {
       count++;
       String altText = matcher.group(1);
-      String base64Data = matcher.group(2);
+      String imageMimeType = matcher.group(2);
+      String base64Data = matcher.group(3);
 
       try {
-        byte[] imageBytes = Base64.getDecoder().decode(base64Data);
+        byte[] imageBytes = FileTypeDetector.decodeBase64(base64Data);
         String prompt = buildPrompt(altText);
-        String ocrResult = vlmClient.ocr(imageBytes, prompt);
+        String ocrResult = vlmClient.ocr(FileTypeDetector.toBase64EncodedUri(imageMimeType, imageBytes), prompt);
         matcher.appendReplacement(result, Matcher.quoteReplacement(ocrResult));
       } catch (Exception e) {
         log.warn("Failed to OCR image {}: {}", count, e.getMessage());

@@ -16,118 +16,133 @@ import me.hanju.parsekit.converter.exception.PopplerConverterException;
 @Service
 public class PopplerConverterService {
 
-  public List<PageImage> convertPdfToImages(byte[] pdfBytes, String format, int dpi) {
+  public List<PageImage> convertPdfToImages(final byte[] pdfBytes, final String format, final int dpi) {
     log.info("Converting PDF to images (format={}, dpi={})", format, dpi);
 
-    Path tempPdf = null;
-    Path tempDir = null;
+    final Path tempPdf;
+    final Path tempDir;
 
     try {
       tempPdf = Files.createTempFile("input", ".pdf");
       tempDir = Files.createTempDirectory("pdf-images");
+    } catch (IOException e) {
+      throw new PopplerConverterException("preprocessing failed", e);
+    }
+
+    try {
       Files.write(tempPdf, pdfBytes);
 
-      int totalPages = getPdfPageCount(tempPdf);
+      final int totalPages = getPdfPageCount(tempPdf);
       log.debug("PDF has {} pages", totalPages);
 
-      List<PageImage> result = new ArrayList<>();
-      String imageFormat = normalizeFormat(format);
+      final List<PageImage> result = new ArrayList<>();
+      final String imageFormat = format.equalsIgnoreCase("jpg") ? "jpeg" : format.toLowerCase();
 
       for (int page = 1; page <= totalPages; page++) {
-        byte[] imageBytes = convertPage(tempPdf, page, imageFormat, dpi, tempDir);
-        result.add(new PageImage(page, imageBytes, totalPages));
+        final byte[] imageBytes = convertPage(tempPdf, page, imageFormat, dpi, tempDir);
+        result.add(new PageImage(page, imageFormat, imageBytes, totalPages));
         log.debug("Converted page {}/{}", page, totalPages);
       }
 
       log.info("Converted PDF to {} images", result.size());
       return result;
 
-    } catch (IOException e) {
+    } catch (final IOException e) {
       throw new PopplerConverterException("convertPdfToImages failed", e);
     } finally {
-      cleanup(tempPdf, tempDir);
+      this.cleanup(tempPdf, tempDir);
     }
   }
 
-  private int getPdfPageCount(Path pdfPath) {
+  private int getPdfPageCount(final Path pdfPath) {
+    final ProcessBuilder pb = new ProcessBuilder("pdfinfo", pdfPath.toString());
+    Process process = null;
     try {
-      ProcessBuilder pb = new ProcessBuilder("pdfinfo", pdfPath.toString());
-      Process process = pb.start();
+      process = pb.start();
 
-      String output = new String(process.getInputStream().readAllBytes());
-      boolean exited = process.waitFor(30, TimeUnit.SECONDS);
+      final String output = new String(process.getInputStream().readAllBytes());
+      final boolean exited = process.waitFor(30, TimeUnit.SECONDS);
 
-      if (!exited || process.exitValue() != 0) {
-        throw new IOException("pdfinfo command failed");
+      if (!exited) {
+        throw new IOException("pdfinfo timed out");
       }
 
-      for (String line : output.split("\n")) {
+      if (process.exitValue() != 0) {
+        throw new IOException("pdfinfo failed");
+      }
+
+      for (final String line : output.split("\n")) {
         if (line.startsWith("Pages:")) {
           return Integer.parseInt(line.substring(6).trim());
         }
       }
       throw new IOException("Could not find page count in pdfinfo output");
 
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
       throw new PopplerConverterException("getPdfPageCount failed", e);
+    } catch (final IOException e) {
+      throw new PopplerConverterException("getPdfPageCount failed", e);
+    } finally {
+      if (process != null) {
+        process.destroyForcibly();
+      }
     }
   }
 
-  private byte[] convertPage(Path pdfPath, int page, String format, int dpi, Path outputDir) {
+  private byte[] convertPage(final Path pdfPath, final int page, final String format, final int dpi,
+      final Path outputDir) {
+    final String outputPrefix = outputDir.resolve("page").toString();
+
+    final List<String> command = List.of(
+        "pdftoppm",
+        "-" + format,
+        "-r", String.valueOf(dpi),
+        "-f", String.valueOf(page),
+        "-l", String.valueOf(page),
+        "-singlefile",
+        pdfPath.toString(),
+        outputPrefix);
+
+    final ProcessBuilder pb = new ProcessBuilder(command);
+    Process process = null;
     try {
-      String outputPrefix = outputDir.resolve("page").toString();
+      process = pb.start();
 
-      List<String> command = List.of(
-          "pdftoppm",
-          "-" + format,
-          "-r", String.valueOf(dpi),
-          "-f", String.valueOf(page),
-          "-l", String.valueOf(page),
-          "-singlefile",
-          pdfPath.toString(),
-          outputPrefix);
-
-      ProcessBuilder pb = new ProcessBuilder(command);
-      Process process = pb.start();
-
-      boolean exited = process.waitFor(60, TimeUnit.SECONDS);
+      final boolean exited = process.waitFor(60, TimeUnit.SECONDS);
       if (!exited) {
-        process.destroyForcibly();
         throw new IOException("pdftoppm timed out for page " + page);
       }
 
       if (process.exitValue() != 0) {
-        String error = new String(process.getErrorStream().readAllBytes());
+        final String error = new String(process.getErrorStream().readAllBytes());
         throw new IOException("pdftoppm failed for page " + page + ": " + error);
       }
 
-      String extension = format.equals("jpeg") ? "jpg" : format;
-      Path imagePath = Path.of(outputPrefix + "." + extension);
+      final String extension = format.equals("jpeg") ? "jpg" : format;
+      final Path imagePath = Path.of(outputPrefix + "." + extension);
 
       if (!Files.exists(imagePath)) {
         throw new IOException("Output image not found: " + imagePath);
       }
 
-      byte[] imageBytes = Files.readAllBytes(imagePath);
+      final byte[] imageBytes = Files.readAllBytes(imagePath);
       Files.deleteIfExists(imagePath);
       return imageBytes;
 
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
       throw new PopplerConverterException("convertPage failed for page " + page, e);
+    } catch (final IOException e) {
+      throw new PopplerConverterException("convertPage failed for page " + page, e);
+    } finally {
+      if (process != null) {
+        process.destroyForcibly();
+      }
     }
   }
 
-  private String normalizeFormat(String format) {
-    return format.equalsIgnoreCase("jpg") ? "jpeg" : format.toLowerCase();
-  }
-
-  private void cleanup(Path tempPdf, Path tempDir) {
+  private void cleanup(final Path tempPdf, final Path tempDir) {
     try {
       if (tempPdf != null)
         Files.deleteIfExists(tempPdf);
@@ -142,12 +157,12 @@ public class PopplerConverterService {
               }
             });
       }
-    } catch (IOException e) {
+    } catch (final IOException e) {
       log.warn("Cleanup failed", e);
     }
   }
 
-  public record PageImage(int page, byte[] content, int totalPages) {
+  public record PageImage(int page, String format, byte[] content, int totalPages) {
     public int size() {
       return content.length;
     }

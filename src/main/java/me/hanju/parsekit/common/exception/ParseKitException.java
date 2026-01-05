@@ -1,4 +1,4 @@
-package me.hanju.parsekit.common;
+package me.hanju.parsekit.common.exception;
 
 public class ParseKitException extends RuntimeException {
   public ParseKitException(Throwable cause) {

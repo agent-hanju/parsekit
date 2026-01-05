@@ -179,7 +179,7 @@ class ConverterControllerTest {
                 assertThat(lines.length).isGreaterThan(0);
                 for (String line : lines) {
                   assertThat(line).contains("\"page\":");
-                  assertThat(line).contains("\"content\":");
+                  assertThat(line).contains("\"encoded_uri\":");
                   assertThat(line).contains("\"total_pages\":");
                 }
               }));

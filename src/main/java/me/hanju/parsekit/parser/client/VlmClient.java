@@ -1,7 +1,6 @@
 package me.hanju.parsekit.parser.client;
 
 import java.time.Duration;
-import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,10 +33,8 @@ public class VlmClient {
   private final int maxTokens;
   private final double temperature;
   private final String defaultPrompt;
-  private final FileTypeDetector fileTypeDetector;
 
-  public VlmClient(ParserProperties properties, FileTypeDetector fileTypeDetector) {
-    this.fileTypeDetector = fileTypeDetector;
+  public VlmClient(ParserProperties properties) {
     ParserProperties.VlmProperties vlm = properties.getVlm();
 
     int bufferSize = vlm.getMaxBufferSize() > 0 ? vlm.getMaxBufferSize() : 16 * 1024 * 1024;
@@ -72,28 +69,23 @@ public class VlmClient {
     return endpoints.get(index);
   }
 
-  public String ocr(byte[] imageBytes) {
-    return ocr(imageBytes, defaultPrompt);
+  public String ocr(final String base64EncodedUri) {
+    return ocr(base64EncodedUri, defaultPrompt);
   }
 
-  public String ocr(byte[] imageBytes, String prompt) {
-    if (imageBytes == null || imageBytes.length == 0) {
-      throw new IllegalArgumentException("Image bytes cannot be null or empty");
+  public String ocr(final String base64EncodedUri, final String prompt) {
+    if (!FileTypeDetector.validateBase64EncodedUri(base64EncodedUri)) {
+      throw new IllegalArgumentException("not valid Base64EncodedUri");
     }
 
-    log.debug("OCR image (size: {} bytes) with prompt: {}", imageBytes.length, prompt);
-
     VlmEndpoint endpoint = getNextEndpoint();
-    String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-    String imageType = fileTypeDetector.detectImageMimeType(imageBytes);
-    String dataUrl = "data:" + imageType + ";base64," + base64Image;
 
     VlmChatRequest request = new VlmChatRequest(
         endpoint.model(),
         List.of(new VlmChatRequest.Message(
             "user",
             List.of(
-                new ImageContent(dataUrl),
+                new ImageContent(base64EncodedUri),
                 new TextContent(prompt)))),
         maxTokens,
         temperature);

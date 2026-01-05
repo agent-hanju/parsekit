@@ -57,7 +57,7 @@ class JodConverterServiceTest {
                 byte[] fileBytes = Files.readAllBytes(path);
                 String filename = path.getFileName().toString();
 
-                byte[] result = service.convertToOdt(filename, fileBytes);
+                byte[] result = service.convertToOdt(fileBytes);
 
                 assertThat(result).isNotEmpty();
                 assertThat(result.length).isGreaterThan(0);
@@ -89,7 +89,7 @@ class JodConverterServiceTest {
                 byte[] fileBytes = Files.readAllBytes(path);
                 String filename = path.getFileName().toString();
 
-                byte[] result = service.convertToPdf(filename, fileBytes);
+                byte[] result = service.convertToPdf(fileBytes);
 
                 assertThat(result).isNotEmpty();
                 // PDF 시그니처 확인

@@ -6,9 +6,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import lombok.extern.slf4j.Slf4j;
+import me.hanju.parsekit.common.exception.BadRequestException;
+import me.hanju.parsekit.common.exception.ParseKitException;
+import me.hanju.parsekit.common.exception.UnsupportedMediaTypeException;
 import me.hanju.parsekit.converter.exception.JodConverterException;
 import me.hanju.parsekit.converter.exception.PopplerConverterException;
 import me.hanju.parsekit.parser.exception.DoclingClientException;
+import me.hanju.parsekit.parser.exception.TikaParserException;
 import me.hanju.parsekit.parser.exception.VlmClientException;
 
 @Slf4j
@@ -48,6 +52,30 @@ public class GlobalExceptionHandler {
     return ResponseEntity
         .status(HttpStatus.BAD_GATEWAY)
         .body(new ErrorResponse("VLM_ERROR", e.getMessage()));
+  }
+
+  @ExceptionHandler(TikaParserException.class)
+  public ResponseEntity<ErrorResponse> handleTikaParserException(TikaParserException e) {
+    log.error("Tika parser error", e);
+    return ResponseEntity
+        .status(HttpStatus.UNPROCESSABLE_ENTITY)
+        .body(new ErrorResponse("TIKA_PARSE_FAILED", e.getMessage()));
+  }
+
+  @ExceptionHandler(BadRequestException.class)
+  public ResponseEntity<ErrorResponse> handleBadRequestException(BadRequestException e) {
+    log.warn("Bad request: {}", e.getMessage());
+    return ResponseEntity
+        .status(HttpStatus.BAD_REQUEST)
+        .body(new ErrorResponse("BAD_REQUEST", e.getMessage()));
+  }
+
+  @ExceptionHandler(UnsupportedMediaTypeException.class)
+  public ResponseEntity<ErrorResponse> handleUnsupportedMediaTypeException(UnsupportedMediaTypeException e) {
+    log.warn("Unsupported media type: {}", e.getMessage());
+    return ResponseEntity
+        .status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+        .body(new ErrorResponse("UNSUPPORTED_MEDIA_TYPE", e.getMessage()));
   }
 
   @ExceptionHandler(ParseKitException.class)
