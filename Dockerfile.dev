@@ -17,6 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Pre-download Gradle during build
+COPY gradlew gradlew
+COPY gradle gradle
+RUN chmod +x gradlew && ./gradlew --version
+
 EXPOSE 8000
 
 # Default command (can be overridden)

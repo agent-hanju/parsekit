@@ -76,7 +76,8 @@ public class DoclingParserController {
         } else {
           log.info("Converting to PDF, then parsing: {}", info.originalFilename());
           final byte[] pdfBytes = jodConverter.convertToPdf(fileBytes);
-          yield doclingClient.parse(pdfBytes, info.baseFilename() + ".pdf", IMAGE_MODE);
+          final ParseResult doclingResult = doclingClient.parse(pdfBytes, info.baseFilename() + ".pdf", IMAGE_MODE);
+          yield new ParseResult(info.originalFilename(), doclingResult.markdown());
         }
       }
     };
