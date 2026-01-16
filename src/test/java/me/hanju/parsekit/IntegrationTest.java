@@ -25,7 +25,6 @@ import org.junit.jupiter.api.TestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -36,15 +35,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import me.hanju.parsekit.common.FileTypeDetector;
 import me.hanju.parsekit.common.exception.UnsupportedMediaTypeException;
 import me.hanju.parsekit.converter.service.JodConverterService;
-import me.hanju.parsekit.converter.service.MarkdownService;
-import me.hanju.parsekit.converter.service.PopplerConverterService;
 import me.hanju.parsekit.parser.client.DoclingClient;
 import me.hanju.parsekit.parser.client.VlmClient;
-import me.hanju.parsekit.parser.config.ParserProperties;
-import me.hanju.parsekit.parser.controller.DoclingParserController;
-import me.hanju.parsekit.parser.controller.HybridParserController;
-import me.hanju.parsekit.parser.controller.VlmParserController;
 import me.hanju.parsekit.parser.dto.ParseResult;
+import me.hanju.parsekit.parser.service.IParserService;
 
 /**
  * 통합 테스트 - 모든 SpringBootTest를 하나의 Context에서 실행
@@ -73,13 +67,7 @@ class IntegrationTest {
   private JodConverterService jodConverter;
 
   @Autowired
-  private MarkdownService markdownService;
-
-  @Autowired
-  private PopplerConverterService popplerConverter;
-
-  @Autowired
-  private ParserProperties parserProperties;
+  private IParserService parserService;
 
   @Autowired
   private ObjectMapper objectMapper;
@@ -437,16 +425,12 @@ class IntegrationTest {
   }
 
   // ============================================
-  // Docling Parser Controller Tests
+  // Parser Service Tests
   // ============================================
 
   @Nested
-  @DisplayName("DoclingParserController")
-  class DoclingParserControllerTests {
-
-    private DoclingParserController createController() {
-      return new DoclingParserController(doclingClient, jodConverter);
-    }
+  @DisplayName("IParserService")
+  class ParserServiceTests {
 
     @Nested
     @DisplayName("parse()")
@@ -459,278 +443,59 @@ class IntegrationTest {
           return Stream.empty();
         }
 
-        DoclingParserController controller = createController();
-
         return Files.list(TEST_FILES_DIR)
             .filter(Files::isRegularFile)
-            .filter(path -> isDoclingControllerSupported(path.getFileName().toString()))
+            .filter(path -> isParserSupported(path.getFileName().toString()))
             .map(path -> DynamicTest.dynamicTest(
                 "파싱: " + path.getFileName(),
                 () -> {
                   byte[] fileBytes = Files.readAllBytes(path);
                   String filename = path.getFileName().toString();
 
-                  MockMultipartFile file = new MockMultipartFile(
-                      "file", filename, "application/octet-stream", fileBytes);
+                  ParseResult result = parserService.parse(fileBytes, filename, 150);
 
-                  ResponseEntity<ParseResult> response = controller.parse(file);
+                  assertThat(result.filename()).isEqualTo(filename);
+                  assertThat(result.markdown()).isNotBlank();
 
-                  assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-                  assertThat(response.getBody()).isNotNull();
-                  assertThat(response.getBody().filename()).isEqualTo(filename);
-                  assertThat(response.getBody().markdown()).isNotBlank();
-
-                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_docling.json");
+                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_parsed.json");
                   Files.writeString(OUTPUT_DIR.resolve(outputFilename),
-                      objectMapper.writeValueAsString(response.getBody()));
+                      objectMapper.writeValueAsString(result));
                 }));
       }
 
       @TestFactory
-      @DisplayName("data/inputs 디렉토리의 Docling 지원 이미지를 파싱한다")
-      Stream<DynamicTest> shouldParseDoclingImages() throws IOException {
+      @DisplayName("data/inputs 디렉토리의 모든 이미지 파일을 파싱한다")
+      Stream<DynamicTest> shouldParseAllImages() throws IOException {
         if (!Files.exists(TEST_FILES_DIR)) {
           return Stream.empty();
         }
 
-        DoclingParserController controller = createController();
-
         return Files.list(TEST_FILES_DIR)
             .filter(Files::isRegularFile)
-            .filter(path -> isDoclingImage(path.getFileName().toString()))
+            .filter(path -> isImageFile(path.getFileName().toString()))
             .map(path -> DynamicTest.dynamicTest(
                 "이미지 파싱: " + path.getFileName(),
                 () -> {
                   byte[] fileBytes = Files.readAllBytes(path);
                   String filename = path.getFileName().toString();
 
-                  MockMultipartFile file = new MockMultipartFile(
-                      "file", filename, "application/octet-stream", fileBytes);
+                  ParseResult result = parserService.parse(fileBytes, filename, 150);
 
-                  ResponseEntity<ParseResult> response = controller.parse(file);
+                  assertThat(result.filename()).isEqualTo(filename);
 
-                  assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-                  assertThat(response.getBody()).isNotNull();
-                  assertThat(response.getBody().filename()).isEqualTo(filename);
-
-                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_docling_image.json");
+                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_parsed.json");
                   Files.writeString(OUTPUT_DIR.resolve(outputFilename),
-                      objectMapper.writeValueAsString(response.getBody()));
+                      objectMapper.writeValueAsString(result));
                 }));
       }
 
       @Test
       @DisplayName("플레인 텍스트 파일은 UnsupportedMediaTypeException을 던진다")
       void shouldThrowForPlainText() {
-        DoclingParserController controller = createController();
-        MockMultipartFile file = new MockMultipartFile(
-            "file", "test.txt", "text/plain", "Hello World".getBytes());
+        byte[] content = "Hello World".getBytes();
+        String filename = "test.txt";
 
-        assertThatThrownBy(() -> controller.parse(file))
-            .isInstanceOf(UnsupportedMediaTypeException.class)
-            .hasMessageContaining("Plain text files not supported");
-      }
-
-      @Test
-      @DisplayName("지원하지 않는 이미지 타입은 UnsupportedMediaTypeException을 던진다")
-      void shouldThrowForUnsupportedImageType() {
-        DoclingParserController controller = createController();
-        MockMultipartFile file = new MockMultipartFile(
-            "file", "test.svg", "image/svg+xml", "<svg></svg>".getBytes());
-
-        assertThatThrownBy(() -> controller.parse(file))
-            .isInstanceOf(UnsupportedMediaTypeException.class);
-      }
-    }
-  }
-
-  // ============================================
-  // Hybrid Parser Controller Tests
-  // ============================================
-
-  @Nested
-  @DisplayName("HybridParserController")
-  class HybridParserControllerTests {
-
-    private HybridParserController createController() {
-      return new HybridParserController(doclingClient, vlmClient, jodConverter, parserProperties);
-    }
-
-    @Nested
-    @DisplayName("parse()")
-    class Parse {
-
-      @TestFactory
-      @DisplayName("data/inputs 디렉토리의 모든 문서 파일을 하이브리드 파싱한다")
-      Stream<DynamicTest> shouldParseAllDocuments() throws IOException {
-        if (!Files.exists(TEST_FILES_DIR)) {
-          return Stream.empty();
-        }
-
-        HybridParserController controller = createController();
-
-        return Files.list(TEST_FILES_DIR)
-            .filter(Files::isRegularFile)
-            .filter(path -> isHybridDocumentFile(path.getFileName().toString()))
-            .map(path -> DynamicTest.dynamicTest(
-                "하이브리드 파싱: " + path.getFileName(),
-                () -> {
-                  byte[] fileBytes = Files.readAllBytes(path);
-                  String filename = path.getFileName().toString();
-
-                  MockMultipartFile file = new MockMultipartFile(
-                      "file", filename, "application/octet-stream", fileBytes);
-
-                  ResponseEntity<ParseResult> response = controller.parse(file, 150);
-
-                  assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-                  assertThat(response.getBody()).isNotNull();
-                  assertThat(response.getBody().filename()).isEqualTo(filename);
-                  assertThat(response.getBody().markdown()).isNotBlank();
-
-                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_hybrid.json");
-                  Files.writeString(OUTPUT_DIR.resolve(outputFilename),
-                      objectMapper.writeValueAsString(response.getBody()));
-                }));
-      }
-
-      @TestFactory
-      @DisplayName("data/inputs 디렉토리의 모든 이미지 파일을 VLM으로 직접 OCR한다")
-      Stream<DynamicTest> shouldOcrAllImages() throws IOException {
-        if (!Files.exists(TEST_FILES_DIR)) {
-          return Stream.empty();
-        }
-
-        HybridParserController controller = createController();
-
-        return Files.list(TEST_FILES_DIR)
-            .filter(Files::isRegularFile)
-            .filter(path -> isImageFile(path.getFileName().toString()))
-            .map(path -> DynamicTest.dynamicTest(
-                "이미지 VLM OCR: " + path.getFileName(),
-                () -> {
-                  byte[] fileBytes = Files.readAllBytes(path);
-                  String filename = path.getFileName().toString();
-
-                  MockMultipartFile file = new MockMultipartFile(
-                      "file", filename, "application/octet-stream", fileBytes);
-
-                  ResponseEntity<ParseResult> response = controller.parse(file, 150);
-
-                  assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-                  assertThat(response.getBody()).isNotNull();
-                  assertThat(response.getBody().filename()).isEqualTo(filename);
-
-                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_hybrid_ocr.json");
-                  Files.writeString(OUTPUT_DIR.resolve(outputFilename),
-                      objectMapper.writeValueAsString(response.getBody()));
-                }));
-      }
-
-      @Test
-      @DisplayName("플레인 텍스트 파일은 UnsupportedMediaTypeException을 던진다")
-      void shouldThrowForPlainText() {
-        HybridParserController controller = createController();
-        MockMultipartFile file = new MockMultipartFile(
-            "file", "test.txt", "text/plain", "Hello World".getBytes());
-
-        assertThatThrownBy(() -> controller.parse(file, 150))
-            .isInstanceOf(UnsupportedMediaTypeException.class)
-            .hasMessageContaining("Plain text files not supported");
-      }
-    }
-  }
-
-  // ============================================
-  // VLM Parser Controller Tests
-  // ============================================
-
-  @Nested
-  @DisplayName("VlmParserController")
-  class VlmParserControllerTests {
-
-    private VlmParserController createController() {
-      return new VlmParserController(vlmClient, markdownService, jodConverter, popplerConverter, parserProperties);
-    }
-
-    @Nested
-    @DisplayName("parse()")
-    class Parse {
-
-      @TestFactory
-      @DisplayName("data/inputs 디렉토리의 모든 이미지 파일을 OCR한다")
-      Stream<DynamicTest> shouldOcrAllImages() throws IOException {
-        if (!Files.exists(TEST_FILES_DIR)) {
-          return Stream.empty();
-        }
-
-        VlmParserController controller = createController();
-
-        return Files.list(TEST_FILES_DIR)
-            .filter(Files::isRegularFile)
-            .filter(path -> isImageFile(path.getFileName().toString()))
-            .map(path -> DynamicTest.dynamicTest(
-                "OCR: " + path.getFileName(),
-                () -> {
-                  byte[] fileBytes = Files.readAllBytes(path);
-                  String filename = path.getFileName().toString();
-
-                  MockMultipartFile file = new MockMultipartFile(
-                      "file", filename, "application/octet-stream", fileBytes);
-
-                  ResponseEntity<ParseResult> response = controller.parse(file, 150);
-
-                  assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-                  assertThat(response.getBody()).isNotNull();
-                  assertThat(response.getBody().filename()).isEqualTo(filename);
-
-                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_vlm.json");
-                  Files.writeString(OUTPUT_DIR.resolve(outputFilename),
-                      objectMapper.writeValueAsString(response.getBody()));
-                }));
-      }
-
-      @TestFactory
-      @DisplayName("data/inputs 디렉토리의 모든 PDF 파일을 OCR한다")
-      Stream<DynamicTest> shouldOcrAllPdfs() throws IOException {
-        if (!Files.exists(TEST_FILES_DIR)) {
-          return Stream.empty();
-        }
-
-        VlmParserController controller = createController();
-
-        return Files.list(TEST_FILES_DIR)
-            .filter(Files::isRegularFile)
-            .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".pdf"))
-            .map(path -> DynamicTest.dynamicTest(
-                "PDF OCR: " + path.getFileName(),
-                () -> {
-                  byte[] fileBytes = Files.readAllBytes(path);
-                  String filename = path.getFileName().toString();
-
-                  MockMultipartFile file = new MockMultipartFile(
-                      "file", filename, "application/pdf", fileBytes);
-
-                  ResponseEntity<ParseResult> response = controller.parse(file, 150);
-
-                  assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-                  assertThat(response.getBody()).isNotNull();
-                  assertThat(response.getBody().filename()).isEqualTo(filename);
-
-                  String outputFilename = filename.replaceAll("\\.[^.]+$", "_vlm_ocr.json");
-                  Files.writeString(OUTPUT_DIR.resolve(outputFilename),
-                      objectMapper.writeValueAsString(response.getBody()));
-                }));
-      }
-
-      @Test
-      @DisplayName("플레인 텍스트 파일은 UnsupportedMediaTypeException을 던진다")
-      void shouldThrowForPlainText() {
-        VlmParserController controller = createController();
-        MockMultipartFile file = new MockMultipartFile(
-            "file", "test.txt", "text/plain", "Hello World".getBytes());
-
-        assertThatThrownBy(() -> controller.parse(file, 150))
+        assertThatThrownBy(() -> parserService.parse(content, filename, 150))
             .isInstanceOf(UnsupportedMediaTypeException.class)
             .hasMessageContaining("Plain text files not supported");
       }
@@ -772,19 +537,7 @@ class IntegrationTest {
         || lower.endsWith(".csv") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
   }
 
-  private static boolean isDoclingControllerSupported(String filename) {
-    String lower = filename.toLowerCase();
-    return lower.endsWith(".pdf") || lower.endsWith(".docx")
-        || lower.endsWith(".xlsx") || lower.endsWith(".pptx")
-        || lower.endsWith(".hwp");
-  }
-
-  private static boolean isDoclingImage(String filename) {
-    String lower = filename.toLowerCase();
-    return lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
-  }
-
-  private static boolean isHybridDocumentFile(String filename) {
+  private static boolean isParserSupported(String filename) {
     String lower = filename.toLowerCase();
     return lower.endsWith(".pdf") || lower.endsWith(".docx")
         || lower.endsWith(".xlsx") || lower.endsWith(".pptx")

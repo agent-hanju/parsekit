@@ -21,11 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import me.hanju.parsekit.common.FileTypeDetector;
 import me.hanju.parsekit.common.FileTypeDetector.FileTypeInfo;
 import me.hanju.parsekit.common.exception.BadRequestException;
-import me.hanju.parsekit.common.exception.UnsupportedMediaTypeException;
 import me.hanju.parsekit.converter.dto.PageImageResponse;
-import me.hanju.parsekit.converter.service.JodConverterService;
-import me.hanju.parsekit.converter.service.MarkdownService;
-import me.hanju.parsekit.converter.service.PopplerConverterService;
+import me.hanju.parsekit.converter.service.ConverterService;
 import me.hanju.parsekit.converter.service.PopplerConverterService.PageImage;
 
 @Slf4j
@@ -34,9 +31,7 @@ import me.hanju.parsekit.converter.service.PopplerConverterService.PageImage;
 @RequiredArgsConstructor
 public class ConverterController {
 
-  private final JodConverterService jodService;
-  private final PopplerConverterService popplerService;
-  private final MarkdownService markdownService;
+  private final ConverterService converterService;
   private final ObjectMapper objectMapper;
 
   @PostMapping(value = "/odt", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -45,25 +40,13 @@ public class ConverterController {
       throw new BadRequestException("File is empty");
     }
 
-    final FileTypeInfo info = FileTypeDetector.detect(file);
+    final byte[] content = FileTypeDetector.getBytes(file);
+    final String filename = file.getOriginalFilename();
+    final FileTypeInfo info = FileTypeDetector.detect(content, filename);
 
-    final byte[] inputBytes = switch (info.category()) {
-      case DOCUMENT, PLAIN_TEXT -> {
-        if (".odt".equalsIgnoreCase(info.extension())) {
-          throw new BadRequestException("File is already in ODT format");
-        }
-        yield FileTypeDetector.getBytes(file);
-      }
-      case MARKDOWN ->
-        markdownService.convertToFullHtml(FileTypeDetector.getBytes(file), info.baseFilename());
-      default ->
-        throw new UnsupportedMediaTypeException(
-            "Unsupported file type for ODT conversion: " + info.originalFilename());
-    };
+    log.info("Received ODT conversion request for file: {}", filename);
 
-    log.info("Received ODT conversion request for file: {}", info.originalFilename());
-
-    final byte[] convertedFile = jodService.convertToOdt(inputBytes);
+    final byte[] convertedFile = converterService.convertToOdt(content, filename);
     final String outputFilename = info.baseFilename() + ".odt";
 
     final HttpHeaders headers = new HttpHeaders();
@@ -86,22 +69,13 @@ public class ConverterController {
       throw new BadRequestException("File is empty");
     }
 
-    final FileTypeInfo info = FileTypeDetector.detect(file);
+    final byte[] content = FileTypeDetector.getBytes(file);
+    final String filename = file.getOriginalFilename();
+    final FileTypeInfo info = FileTypeDetector.detect(content, filename);
 
-    final byte[] inputBytes = switch (info.category()) {
-      case DOCUMENT, SPREADSHEET, PRESENTATION, PLAIN_TEXT ->
-        FileTypeDetector.getBytes(file);
-      case MARKDOWN ->
-        markdownService.convertToFullHtml(FileTypeDetector.getBytes(file), info.baseFilename());
-      case PDF ->
-        throw new BadRequestException("File is already in PDF format");
-      default ->
-        throw new UnsupportedMediaTypeException("Unsupported file type for PDF conversion: " + info.originalFilename());
-    };
+    log.info("Received PDF conversion request for file: {}", filename);
 
-    log.info("Received PDF conversion request for file: {}", info.originalFilename());
-
-    final byte[] convertedFile = jodService.convertToPdf(inputBytes);
+    final byte[] convertedFile = converterService.convertToPdf(content, filename);
     final String outputFilename = info.baseFilename() + ".pdf";
 
     final HttpHeaders headers = new HttpHeaders();
@@ -129,25 +103,13 @@ public class ConverterController {
       throw new BadRequestException("File is empty");
     }
 
-    final FileTypeInfo info = FileTypeDetector.detect(file);
+    final byte[] content = FileTypeDetector.getBytes(file);
+    final String filename = file.getOriginalFilename();
 
-    final byte[] pdfBytes = switch (info.category()) {
-      case DOCUMENT, SPREADSHEET, PRESENTATION, PLAIN_TEXT ->
-        jodService.convertToPdf(FileTypeDetector.getBytes(file));
-      case MARKDOWN ->
-        jodService.convertToPdf(markdownService.convertToFullHtml(FileTypeDetector.getBytes(file), info.baseFilename()));
-      case PDF ->
-        FileTypeDetector.getBytes(file);
-      default ->
-        throw new UnsupportedMediaTypeException(
-            "Unsupported file type for image conversion: " + info.originalFilename());
-    };
-
-    log.info("Received image conversion request for file: {} (format={}, dpi={})",
-        info.originalFilename(), format, dpi);
+    log.info("Received image conversion request for file: {} (format={}, dpi={})", filename, format, dpi);
 
     final StreamingResponseBody stream = outputStream -> {
-      final List<PageImage> images = popplerService.convertPdfToImages(pdfBytes, format, dpi);
+      final List<PageImage> images = converterService.convertToImages(content, filename, format, dpi);
 
       for (final PageImage pageImage : images) {
         final String mimeType = "image/" + pageImage.format();

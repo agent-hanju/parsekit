@@ -197,7 +197,7 @@ public final class FileTypeDetector {
   private FileTypeDetector() {
   }
 
-  private static MediaType detect(final byte[] content, final String filename) {
+  private static MediaType detectMimeType(final byte[] content, final String filename) {
     final Metadata metadata = new Metadata();
     if (filename != null) {
       metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, filename);
@@ -268,16 +268,19 @@ public final class FileTypeDetector {
   }
 
   /**
-   * MultipartFile에서 파일 타입 정보를 감지한다.
+   * byte 배열과 파일명에서 파일 타입 정보를 감지한다.
    * MIME 타입, 카테고리, 확장자, 파일명 정보를 한 번에 반환한다.
    * Tika가 분류할 수 없는 MIME 타입을 반환하면 파일 확장자 기반으로 fallback한다.
+   *
+   * @param content  파일 내용
+   * @param filename 파일명
+   * @return 파일 타입 정보
    */
-  public static FileTypeInfo detect(final MultipartFile file) {
-    final byte[] content = getBytes(file);
-    final String originalFilename = file.getOriginalFilename();
+  public static FileTypeInfo detect(final byte[] content, final String filename) {
+    final String originalFilename = filename;
     final String baseFilename = extractBaseFilename(originalFilename);
 
-    String mimeType = detect(content, originalFilename).toString();
+    String mimeType = detectMimeType(content, originalFilename).toString();
 
     // Tika가 분류할 수 없는 MIME 타입이면 확장자 기반으로 fallback
     if (!isClassifiable(mimeType)) {
@@ -297,6 +300,15 @@ public final class FileTypeDetector {
     final String extension = detectExtension(mimeType);
 
     return new FileTypeInfo(mimeType, category, extension, originalFilename, baseFilename);
+  }
+
+  /**
+   * MultipartFile에서 파일 타입 정보를 감지한다.
+   * MIME 타입, 카테고리, 확장자, 파일명 정보를 한 번에 반환한다.
+   * Tika가 분류할 수 없는 MIME 타입을 반환하면 파일 확장자 기반으로 fallback한다.
+   */
+  public static FileTypeInfo detect(final MultipartFile file) {
+    return detect(getBytes(file), file.getOriginalFilename());
   }
 
   private static String extractExtension(final String filename) {
@@ -328,7 +340,7 @@ public final class FileTypeDetector {
    */
   public static String toBase64EncodedUri(final MultipartFile file) {
     final byte[] bytes = getBytes(file);
-    return toBase64EncodedUri(detect(bytes, file.getOriginalFilename()).toString(), bytes);
+    return toBase64EncodedUri(detect(bytes, file.getOriginalFilename()).mimeType(), bytes);
   }
 
   /**
