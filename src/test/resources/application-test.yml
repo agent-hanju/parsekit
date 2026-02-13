@@ -23,20 +23,33 @@ jodconverter:
 
 logging:
   level:
-    me.hanju.parsekit: DEBUG
+    dev.hanju.parsekit: DEBUG
     org.jodconverter: DEBUG
 
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    build:
+      enabled: true
+
 # Parser Client Configuration
+# External services disabled by default - set environment variables to enable
 parser:
   docling:
-    base-urls:
-      - http://211.109.9.121:5001
+    base-urls: http://211.109.9.121:5001
     timeout: 5m
     max-buffer-size: 16777216
   vlm:
     servers:
       - base-url: http://211.109.9.121:15018
-        model: qwen2.5-vl-7b-instruct
+        model: Qwen/Qwen2-VL-7B-Instruct
     timeout: 2m
     max-buffer-size: 16777216
     max-tokens: 4096

@@ -10,7 +10,12 @@ build/
 *.ipr
 tests/
 docs/
+data/
 *.md
+.gitattributes
 .gitignore
 .dockerignore
 docker-compose.yml
+docker-compose.dev.yml
+Dockerfile
+Dockerfile.dev

@@ -2,7 +2,32 @@ services:
   parsekit:
     build: .
     ports:
-      - '8000:8000'
+      - '${SERVER_PORT:-8000}:8000'
     restart: unless-stopped
     environment:
-      - JAVA_OPTS=-Xmx512m
+      # Server
+      - JAVA_OPTS=${JAVA_OPTS:--Xmx512m}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-100MB}
+      - MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-100MB}
+      # JODConverter
+      - JODCONVERTER_TIMEOUT=${JODCONVERTER_TIMEOUT:-120000}
+      # Docling (document parsing service)
+      - DOCLING_BASE_URLS=${DOCLING_BASE_URLS:-}
+      - DOCLING_TIMEOUT=${DOCLING_TIMEOUT:-5m}
+      - DOCLING_MAX_BUFFER_SIZE=${DOCLING_MAX_BUFFER_SIZE:-16777216}
+      # VLM (vision language model for OCR)
+      - PARSER_VLM_SERVERS_0_BASE_URL=${PARSER_VLM_SERVERS_0_BASE_URL:-}
+      - PARSER_VLM_SERVERS_0_MODEL=${PARSER_VLM_SERVERS_0_MODEL:-}
+      - PARSER_VLM_TIMEOUT=${PARSER_VLM_TIMEOUT:-2m}
+      - PARSER_VLM_MAX_BUFFER_SIZE=${PARSER_VLM_MAX_BUFFER_SIZE:-16777216}
+      - PARSER_VLM_MAX_TOKENS=${PARSER_VLM_MAX_TOKENS:-4096}
+      - PARSER_VLM_TEMPERATURE=${PARSER_VLM_TEMPERATURE:-0.01}
+      - PARSER_VLM_EMBEDDED_IMAGE_PROMPT=${PARSER_VLM_EMBEDDED_IMAGE_PROMPT:-}
+      - PARSER_VLM_DEFAULT_PROMPT=${PARSER_VLM_DEFAULT_PROMPT:-}
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/actuator/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

@@ -1,12 +1,13 @@
 server:
-  port: 8000
+  port: ${SERVER_PORT:8000}
+
 spring:
   application:
     name: parsekit
   servlet:
     multipart:
-      max-file-size: 100MB
-      max-request-size: 100MB
+      max-file-size: ${MAX_FILE_SIZE:100MB}
+      max-request-size: ${MAX_REQUEST_SIZE:100MB}
 
 # JODConverter Configuration
 jodconverter:
@@ -15,35 +16,44 @@ jodconverter:
     office-home: /usr/lib/libreoffice
     port-numbers: 2002
     max-tasks-per-process: 100
-    task-execution-timeout: 120000
+    task-execution-timeout: ${JODCONVERTER_TIMEOUT:120000}
     task-queue-timeout: 30000
-    process-timeout: 120000
+    process-timeout: ${JODCONVERTER_TIMEOUT:120000}
     process-retry-interval: 250
     process-manager:
-      process-timeout: 120000
+      process-timeout: ${JODCONVERTER_TIMEOUT:120000}
 
 logging:
   level:
-    me.hanju.parsekit: DEBUG
+    dev.hanju.parsekit: ${LOG_LEVEL:INFO}
     org.jodconverter: INFO
 
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+  info:
+    build:
+      enabled: true
+
 # Parser Client Configuration
+# VLM servers are configured via indexed environment variables:
+# PARSER_VLM_SERVERS_0_BASE_URL, PARSER_VLM_SERVERS_0_MODEL, etc.
 parser:
   docling:
-    # base-urls:
-    #   - http://localhost:5000
-    #   - http://localhost:5001
-    # timeout: 5m
-    # max-buffer-size: 16777216
+    base-urls: ${DOCLING_BASE_URLS:}
+    timeout: ${DOCLING_TIMEOUT:5m}
+    max-buffer-size: ${DOCLING_MAX_BUFFER_SIZE:16777216}
   vlm:
-    # servers:
-    #   - base-url: http://localhost:8000
-    #     model: Qwen/Qwen2-VL-7B-Instruct
-    #   - base-url: http://localhost:8001
-    #     model: Qwen/Qwen2-VL-7B-Instruct
-    # timeout: 2m
-    # max-buffer-size: 16777216
-    # max-tokens: 4096
-    # default-prompt: "Extract all text from this image accurately. Return only the extracted text."
-    # embedded-image-prompt: "This is an embedded image from a document. Extract and describe all text, diagrams, charts, or visual content. Format the output as markdown."
-    # image-format: png
+    timeout: ${PARSER_VLM_TIMEOUT:2m}
+    max-buffer-size: ${PARSER_VLM_MAX_BUFFER_SIZE:16777216}
+    max-tokens: ${PARSER_VLM_MAX_TOKENS:4096}
+    temperature: ${PARSER_VLM_TEMPERATURE:0.01}
+    default-prompt: ${PARSER_VLM_DEFAULT_PROMPT:OCR this image as GitHub Flavored Markdown accurately. Return only the OCRed Markdown. Do not wrap the output in a code block. No explanations or preamble. Start with the first word of the content.}
+    embedded-image-prompt: ${PARSER_VLM_EMBEDDED_IMAGE_PROMPT:OCR this embedded image as GitHub Flavored Markdown accurately. Return only the OCRed Markdown. Describe briefly if the image is a drawing. Do not wrap the output in a code block. No explanations or preamble. Start with the first word of the content.}
+    image-format: ${PARSER_VLM_IMAGE_FORMAT:png}

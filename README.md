@@ -44,6 +44,7 @@ curl -X POST http://localhost:8000/api/convert/pdf \
 ```
 
 **지원 형식:**
+
 - 텍스트: `.hwp`, `.hwpx`, `.doc`, `.docx`, `.dotx`, `.odt`, `.ott`, `.fodt`, `.rtf`, `.txt`, `.html`, `.xhtml`, `.wpd`, `.abw`, `.xml`, `.md`
 - 스프레드시트: `.xls`, `.xlsx`, `.xltx`, `.ods`, `.ots`, `.fods`, `.csv`
 - 프레젠테이션: `.ppt`, `.pptx`, `.potx`, `.odp`, `.otp`, `.fodp`
@@ -73,14 +74,6 @@ curl -X POST "http://localhost:8000/api/convert/images?format=png&dpi=150" \
 {"page":3,"content":"iVBORw0KGgo...","size":12345,"total_pages":3}
 ```
 
-#### `GET /api/convert/health`
-
-헬스체크
-
-```bash
-curl http://localhost:8000/api/convert/health
-```
-
 ### 파싱 API
 
 #### `POST /api/parse/parse`
@@ -108,6 +101,7 @@ curl -X POST "http://localhost:8000/api/parse/parse?dpi=150" \
 ```
 
 **지원 형식:**
+
 - 문서: `/api/convert/pdf` 지원 형식과 동일
 - 이미지: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.tiff` (VlmParser, HybridParser만)
 - 플레인 텍스트: `.txt`, `.md` (변환 없이 그대로 반환)
@@ -123,32 +117,52 @@ curl -X POST "http://localhost:8000/api/parse/parse?dpi=150" \
 
 ## 에러 응답
 
-모든 에러는 통일된 형식으로 반환됩니다:
+모든 에러는 RFC 7807 Problem Details 형식으로 반환됩니다:
 
 ```json
 {
-  "error": "CONVERSION_FAILED",
-  "message": "convertToPdf failed: document.hwp"
+  "type": "https://parsekit.dev/errors/conversion-failed",
+  "title": "Conversion Failed",
+  "status": 422,
+  "detail": "convertToPdf failed: document.hwp"
 }
 ```
 
-| HTTP 상태 | 에러 코드                 | 설명                      |
+| HTTP 상태 | Type                      | 설명                      |
 | --------- | ------------------------- | ------------------------- |
-| 400       | -                         | 잘못된 요청 (빈 파일 등)  |
-| 415       | -                         | 지원하지 않는 미디어 타입 |
-| 422       | `CONVERSION_FAILED`       | JODConverter 변환 실패    |
-| 422       | `IMAGE_CONVERSION_FAILED` | Poppler 이미지 변환 실패  |
-| 502       | `DOCLING_ERROR`           | Docling 서버 오류         |
-| 502       | `VLM_ERROR`               | VLM 서버 오류             |
-| 500       | `INTERNAL_ERROR`          | 내부 오류                 |
+| 400       | `bad-request`             | 잘못된 요청 (빈 파일 등)  |
+| 415       | `unsupported-media-type`  | 지원하지 않는 미디어 타입 |
+| 422       | `conversion-failed`       | JODConverter 변환 실패    |
+| 422       | `image-conversion-failed` | Poppler 이미지 변환 실패  |
+| 422       | `tika-parse-failed`       | Tika 파싱 실패            |
+| 502       | `docling-error`           | Docling 서버 오류         |
+| 502       | `vlm-error`               | VLM 서버 오류             |
+| 500       | `internal-error`          | 내부 오류                 |
 
 ## 실행
 
-### Docker (권장)
+### Docker Compose (권장)
+
+```bash
+# 환경변수 설정
+cp .env.example .env
+# .env 파일을 편집하여 필요한 값 설정
+
+# 실행
+docker compose up -d
+
+# 로그 확인
+docker compose logs -f
+```
+
+### Docker 단독 실행
 
 ```bash
 docker build -t parsekit .
-docker run -p 8000:8000 parsekit
+docker run -p 8000:8000 \
+  -e JAVA_OPTS="-Xmx512m" \
+  -e DOCLING_BASE_URLS="http://docling:5000" \
+  parsekit
 ```
 
 ### Docker 개발 환경
@@ -198,47 +212,47 @@ unopkg add --shared H2Orestart.oxt
 
 # 또는
 ./gradlew build
-java -jar build/libs/parsekit-converter-1.0.0.jar
+java -jar build/libs/parsekit-converter-0.2.0.jar
 ```
 
 ## 설정
 
-`application.yml`:
+### 환경변수
 
-```yaml
-server:
-  port: 8000
+`.env.example`을 `.env`로 복사 후 필요한 값을 설정합니다:
 
-# JODConverter 설정
-jodconverter:
-  local:
-    enabled: true
-    office-home: /usr/lib/libreoffice # LibreOffice 설치 경로
-    port-numbers: 2002
-    max-tasks-per-process: 100
-    task-execution-timeout: 120000
+| 환경변수               | 기본값     | 설명                           |
+| ---------------------- | ---------- | ------------------------------ |
+| `SERVER_PORT`          | `8000`     | 서버 포트                      |
+| `JAVA_OPTS`            | `-Xmx512m` | JVM 옵션                       |
+| `LOG_LEVEL`            | `INFO`     | 로그 레벨                      |
+| `MAX_FILE_SIZE`        | `100MB`    | 최대 업로드 파일 크기          |
+| `MAX_REQUEST_SIZE`     | `100MB`    | 최대 요청 크기                 |
+| `JODCONVERTER_TIMEOUT` | `120000`   | LibreOffice 변환 타임아웃 (ms) |
+| `DOCLING_BASE_URLS`    | -          | Docling 서버 URL (쉼표로 구분) |
+| `DOCLING_TIMEOUT`      | `5m`       | Docling 요청 타임아웃          |
+| `VLM_SERVERS`          | -          | VLM 서버 설정 (JSON 배열)      |
+| `VLM_TIMEOUT`          | `2m`       | VLM 요청 타임아웃              |
+| `VLM_MAX_TOKENS`       | `4096`     | VLM 최대 토큰 수               |
 
-# 파서 설정 (선택)
-parser:
-  # Docling 서버 설정
-  docling:
-    base-urls:
-      - http://localhost:5000
-    timeout: 5m
-    max-buffer-size: 16777216
+**Docling 설정 예시:**
 
-  # VLM 서버 설정
-  vlm:
-    servers:
-      - base-url: http://localhost:8080
-        model: Qwen/Qwen2-VL-7B-Instruct
-    timeout: 2m
-    max-buffer-size: 16777216
-    max-tokens: 4096
-    default-prompt: 'Extract all text from this image accurately.'
-    embedded-image-prompt: 'Extract and describe all text, diagrams, charts.'
-    image-format: png
+```bash
+DOCLING_BASE_URLS=http://docling1:5000,http://docling2:5000
 ```
+
+**VLM 설정 예시:**
+
+```bash
+VLM_SERVERS=[{"base-url":"http://vllm:8000","model":"Qwen/Qwen2-VL-7B-Instruct"}]
+```
+
+### Actuator 엔드포인트
+
+| 엔드포인트         | 설명      |
+| ------------------ | --------- |
+| `/actuator/health` | 헬스체크  |
+| `/actuator/info`   | 빌드 정보 |
 
 ## 기술 스택
 
